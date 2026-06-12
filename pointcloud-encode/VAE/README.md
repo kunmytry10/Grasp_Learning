@@ -211,32 +211,60 @@ z = model.fc_mu(model.encode(point_cloud))  # [B, 256]
 
 ### 训练曲线
 
-![training curves](log/vae/analysis/training_curves.png)
+![training curves](log/vae/analysis/training/training_curves.png)
 
 ### 隐空间对比（VAE vs PointNet++）
 
 | PointNet++ (1024-dim, 监督) | VAE (256-dim μ, 自监督) |
 |:---:|:---:|
-| ![tsne](log/vae/analysis/tsne_comparison.png) | 见 [RESULTS §2](log/vae/analysis/RESULTS.md#2-隐空间-t-sne-对比) |
+| ![tsne](log/vae/analysis/latent_space/tsne_comparison.png) | 见 [RESULTS §2](log/vae/analysis/RESULTS.md#2-隐空间-t-sne-对比) |
 
 ### 类别相似度矩阵
 
 | PointNet++ (类间均值 0.875) | VAE (类间均值 0.018) |
 |:---:|:---:|
-| ![sim](log/vae/analysis/similarity_comparison.png) | 见 [RESULTS §3](log/vae/analysis/RESULTS.md#3-类别相似度矩阵) |
+| ![sim](log/vae/analysis/latent_space/similarity_comparison.png) | 见 [RESULTS §3](log/vae/analysis/RESULTS.md#3-类别相似度矩阵) |
 
 ### 重建质量
 
-![recon](log/vae/analysis/reconstruction_samples.png)
+![recon](log/vae/analysis/reconstruction/reconstruction_samples.png)
 
 ### 隐空间插值
 
 | 同类（椅子→椅子） | 跨类（飞机→台灯） |
 |:---:|:---:|
-| ![same-fixed](log/vae/analysis/interpolation_same_class_fixed.gif) | ![cross-fixed](log/vae/analysis/interpolation_cross_class_fixed.gif) |
-| ![same-rotate](log/vae/analysis/interpolation_same_class.gif) | ![cross-rotate](log/vae/analysis/interpolation_cross_class.gif) |
+| ![same-fixed](log/vae/analysis/interpolation/interpolation_same_class_fixed.gif) | ![cross-fixed](log/vae/analysis/interpolation/interpolation_cross_class_fixed.gif) |
+| ![same-rotate](log/vae/analysis/interpolation/interpolation_same_class.gif) | ![cross-rotate](log/vae/analysis/interpolation/interpolation_cross_class.gif) |
 
 *固定视角 GIF 看变化趋势，旋转 GIF 看 3D 结构。详见 [RESULTS §5](log/vae/analysis/RESULTS.md#5-隐空间插值)。*
+
+### 潜空间 PCA 算术
+
+对 VAE 编码器输出的 2468 个 μ 向量（每个 256 维）做 PCA，发现潜空间中最大的变异来源，然后沿主方向"滑动"探索。
+
+**PCA 发现**：3 个主方向解释了 **76.7%** 的潜空间变异（PC1=27.6%, PC2=26.9%, PC3=22.2%）。
+
+| PC1 Sweep | PC2 Sweep | PC3 Sweep |
+|:---:|:---:|:---:|
+| ![pc1](log/vae/analysis/pca_arithmetic/pc1_sweep.gif) | ![pc2](log/vae/analysis/pca_arithmetic/pc2_sweep.gif) | ![pc3](log/vae/analysis/pca_arithmetic/pc3_sweep.gif) |
+
+*3 个主方向的连续滑条动画。每帧 = 同一把椅子沿 PCA 方向从 α=-3 走到 α=+3。颜色渐变（蓝→红）标注扫描位置。*
+
+**2D 潜空间地图**（PC1 × PC2）：
+
+| 静态网格 | 旋转视角 |
+|:---:|:---:|
+| ![grid](log/vae/analysis/pca_arithmetic/grid_2d_pc1_pc2.png) | ![rot](log/vae/analysis/pca_arithmetic/grid_2d_rotation.gif) |
+
+*5×5 网格 = 在 PC1 和 PC2 构成的平面上同时探索两个方向。旋转 GIF 从不同角度验证变化是几何属性而非视角。*
+
+**折线变形路径**（chair → table → airplane）：
+
+![path](log/vae/analysis/pca_arithmetic/multi_step_path.gif)
+
+*和之前 A→B 直线插值不同——这条折线在潜空间中拐弯。验证了拐弯处解码不会崩溃，潜空间支持更复杂的路径。*
+
+> 详见 [RESULTS §6](log/vae/analysis/RESULTS.md#6-pca-潜空间算术)
 
 ---
 
@@ -253,16 +281,26 @@ pointcloud-encode/VAE/
 ├── plot_latent_tsne.py         ← t-SNE + 相似度矩阵
 ├── plot_reconstruction.py      ← 重建质量可视化
 ├── plot_interpolation.py       ← 隐空间插值 (旋转 + 固定 GIF)
+├── plot_latent_arithmetic.py   ← PCA 潜空间算术 (方向扫描 + 网格 + 折线)
 └── log/vae/
     ├── 2026-06-11_17-57/       ← 训练日志 + checkpoint
     └── analysis/
         ├── RESULTS.md           ← 详细分析报告
-        ├── training_curves.png
-        ├── tsne_comparison.png
-        ├── similarity_comparison.png
-        ├── reconstruction_samples.png
-        ├── interpolation_*.gif  ← 4 张 GIF (固定 + 旋转)
-        └── interpolation_*.png  ← 2 张静态插值图
+        ├── training/
+        │   └── training_curves.png
+        ├── latent_space/
+        │   ├── tsne_comparison.png
+        │   └── similarity_comparison.png
+        ├── reconstruction/
+        │   └── reconstruction_samples.png
+        ├── interpolation/
+        │   └── interpolation_*.gif/png
+        └── pca_arithmetic/      ← 新增
+            ├── pca_explained_variance.png
+            ├── pc1/2/3_sweep.gif
+            ├── grid_2d_pc1_pc2.png
+            ├── grid_2d_rotation.gif
+            └── multi_step_path.gif
 ```
 
 ---

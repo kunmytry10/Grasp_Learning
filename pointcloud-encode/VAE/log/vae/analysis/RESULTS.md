@@ -14,6 +14,7 @@
 - [3. 类别相似度矩阵](#3-类别相似度矩阵)
 - [4. 重建质量](#4-重建质量)
 - [5. 隐空间插值](#5-隐空间插值)
+- [6. PCA 潜空间算术](#6-pca-潜空间算术)
 - [总结](#总结)
 
 ---
@@ -37,7 +38,7 @@
 
 ## 1. 训练过程
 
-![training curves](training_curves.png)
+![training curves](training/training_curves.png)
 
 ### 训练阶段
 
@@ -66,7 +67,7 @@
 
 ## 2. 隐空间 t-SNE 对比
 
-![t-SNE comparison](tsne_comparison.png)
+![t-SNE comparison](latent_space/tsne_comparison.png)
 
 > 左：PointNet++ 分类器 1024 维特征 (监督) · 右：VAE 编码器 256 维 μ 向量 (自监督)
 >
@@ -101,7 +102,7 @@ t-SNE 只保持局部近邻关系，不反映全局距离。两个簇在图中�
 
 ## 3. 类别相似度矩阵
 
-![similarity comparison](similarity_comparison.png)
+![similarity comparison](latent_space/similarity_comparison.png)
 
 > 每格 = 两个类别的特征质心的余弦相似度 · RdBu_r 色条（红=1.0, 白=0.5, 蓝=0/负）
 
@@ -137,7 +138,7 @@ KL 散度强制 μ 向量的分布接近 N(0,1)。在 256 维空间中，标准�
 
 ## 4. 重建质量
 
-![reconstruction samples](reconstruction_samples.png)
+![reconstruction samples](reconstruction/reconstruction_samples.png)
 
 > 2 行 × 5 列 = 10 个测试样本 · 蓝色 = 原始点云 · 红色 = VAE 重建 · 每个样本标注了类别名和 Chamfer Distance
 
@@ -175,11 +176,11 @@ CD=0.12 意味着解码器能大致重建，但表面精度有限。这不影响
 
 ### 同类插值：椅子 → 椅子
 
-![interpolation same class](interpolation_same_class_fixed.gif)
+![interpolation same class](interpolation/interpolation_same_class_fixed.gif)
 
 > 固定视角（elev=25°, azim=45°）。8 帧从蓝到红，同角度观察形状渐变。
 
-![interpolation same class](interpolation_same_class.gif)
+![interpolation same class](interpolation/interpolation_same_class.gif)
 
 > 旋转视角。每步绕物体旋转一圈（~1.2s），然后卡片过渡到下一步。
 
@@ -187,11 +188,11 @@ CD=0.12 意味着解码器能大致重建，但表面精度有限。这不影响
 
 ### 跨类插值：飞机 → 台灯
 
-![interpolation cross class](interpolation_cross_class_fixed.gif)
+![interpolation cross class](interpolation/interpolation_cross_class_fixed.gif)
 
 > 固定视角（elev=25°, azim=45°）。8 帧从蓝到红，同角度观察形状渐变。
 
-![interpolation cross class](interpolation_cross_class.gif)
+![interpolation cross class](interpolation/interpolation_cross_class.gif)
 
 > 旋转视角。每步绕物体旋转一圈（~1.2s），然后卡片过渡到下一步。
 
@@ -209,6 +210,97 @@ CD=0.12 意味着解码器能大致重建，但表面精度有限。这不影响
 
 ---
 
+## 6. PCA 潜空间算术
+
+**为什么做 PCA**：前面用插值验证了隐空间**连续**（从 A 走到 B 不崩溃），用 t-SNE 验证了隐空间**有结构**（同类聚类）。但还有一个问题没回答：**隐空间中哪些方向是最重要的？沿着这些方向走，点云会怎样变化？**
+
+PCA 直接从 2468 个 μ 向量中发现"变异最大的方向"，无需人工标注——是数据驱动的探索。
+
+### PCA 解释方差
+
+![pca](pca_arithmetic/pca_explained_variance.png)
+
+> 蓝色柱 = 每个主成分单独解释的方差百分比 · 红色折线 = 累计解释方差
+
+| 指标 | 数值 |
+|------|------|
+| PC1 | **27.6%** |
+| PC2 | **26.9%** |
+| PC3 | **22.2%** |
+| Top-3 累计 | **76.7%** |
+| Top-10 累计 | **99.8%** |
+
+**这意味着**：虽然 μ 是 256 维的，但 2468 个物体几乎"躺"在一个很薄的子空间里——3 个方向就解释了 3/4 的变异，10 个方向几乎覆盖全部。这和相似度矩阵的发现一致：256 维中大部分维度是有效的但不是独立的，核心结构集中在少数方向。
+
+### 单方向扫描
+
+对每个主方向，以标准差 σ_k 为步长，在 α ∈ [-3, +3] 范围内滑动，解码观察点云变化。
+
+| PC1 (27.6%) | PC2 (26.9%) | PC3 (22.2%) |
+|:---:|:---:|:---:|
+| ![pc1](pca_arithmetic/pc1_sweep.gif) | ![pc2](pca_arithmetic/pc2_sweep.gif) | ![pc3](pca_arithmetic/pc3_sweep.gif) |
+
+> 锚点：chair 类的质心最近样本 · 同一把椅子沿三个不同方向的变化
+>
+> 颜色（蓝→红）标注 α 位置，便于追踪扫描方向
+
+**三个方向的变化不同**——PC1、PC2、PC3 各控制不同的几何属性（如整体尺寸、宽高比、局部结构调整）。这说明 PCA 成功把潜空间的多维变异分解成了可独立观察的轴。
+
+### 2D 潜空间地图（PC1 × PC2）
+
+如果一次只看一个方向，会错过方向之间的交互。2D 网格让你在 PC1 和 PC2 构成的平面上同时探索。
+
+![grid](pca_arithmetic/grid_2d_pc1_pc2.png)
+
+> 5×5 网格 · 中心 (0,0) = 原始椅子 · 行 = PC2 变化 · 列 = PC1 变化
+
+**怎么看**：
+- 同行内从左到右 → 纯 PC1 方向的渐变
+- 同列内从下到上 → 纯 PC2 方向的渐变
+- 对角线 → 两个方向的同时变化
+- 四角 → 极端组合（是否还像椅子？是否散架？）
+
+![grid rot](pca_arithmetic/grid_2d_rotation.gif)
+
+> 同一个 5×5 网格，相机旋转一圈。用于排除"视角混淆"——确认变化是几何属性而非朝向。
+
+**关键发现**：旋转视角下每行/列的变化**和观看角度无关** → PCA 方向控制的是真实的 3D 几何属性（形状、大小），不是旋转或视角。
+
+### 折线变形路径
+
+之前的插值都是 A→B 直线。但潜空间是多维流形——真正的"导航"需要能拐弯。折线路径测试的就是这个。
+
+![path](pca_arithmetic/multi_step_path.gif)
+
+> 三段式：chair → table → airplane · 两段直线在潜空间中拐弯
+
+| 阶段 | t 范围 | 观察什么 |
+|------|--------|---------|
+| chair → table | 0.0–1.0 | 靠背消失、腿变粗、顶部变平 |
+| 拐弯处 (table) | 1.0 | 桌子是否正常？**拐弯处解码不应该崩溃** |
+| table → airplane | 1.0–2.0 | 桌面收窄、两侧伸展、整体变细长 |
+
+**拐弯不崩溃** → 潜空间在这个区域没有"死角"，Decoder 对复杂路径保持泛化。这对下游有意义——我们可以在潜空间中自由移动来生成训练数据或寻找最优抓取姿态。
+
+### PCA 算术 vs 插值 — 区别
+
+| | 之前的插值 | 这次的 PCA 算术 |
+|---|---|---|
+| **方向来源** | 两个物体的 μ 的连线 | PCA 从全部数据中发现的变异轴 |
+| **做什么** | 物体 A 变形为物体 B | 同一物体沿某个属性方向"拧动" |
+| **回答的问题** | 潜空间连续吗？ | 潜空间中有哪些属性轴？每个轴控制什么？ |
+| **灵活性** | 只能走物体到物体的连线 | 可以在任意方向上自由探索 |
+
+### 对下游的意义
+
+PCA 发现的方向是**数据驱动的属性分解**——不需要人工标注"这个方向是大小、那个方向是厚度"。对于抓取流水线：
+
+1. **数据增强**：沿 PCA 方向滑动生成变体 → 训练数据 × N
+2. **鲁棒性测试**：在极端 α 处解码 → 测试 GraspNet 对形变的容忍度
+3. **属性编辑**：如果要生成"更厚的手柄"，找到对应的 PCA 方向即可
+
+---
+
 ## 总结
 
 | 维度 | PointNet++ 监督分类 | VAE 自监督 |
@@ -219,5 +311,6 @@ CD=0.12 意味着解码器能大致重建，但表面精度有限。这不影响
 | 隐空间连续性 | 有空隙（群岛） | **连续**（大陆） |
 | 对未见物体的泛化 | 可能落在空区域 | **总是落在合理位置** |
 | 下游适用 | 需标签微调 | **可直接作 backbone** |
+| PCA 有效维度 | — | **Top-3 = 76.7%** |
 
-**核心结论**：VAE 在没有任何标签的情况下，学到了一个判别力更强（相似度 std 0.49 vs 0.04）、维度更低（256 vs 1024）、泛化更好（连续流形 vs 离散群岛）的特征空间。下一步可以直接作为 GraspNet 的感知 backbone，或用大规模无标注零件数据进一步预训练。
+**核心结论**：VAE 在没有任何标签的情况下，学到了一个判别力更强（相似度 std 0.49 vs 0.04）、维度更低（256 vs 1024）、泛化更好（连续流形 vs 离散群岛）的特征空间。PCA 进一步发现潜空间高度结构化——3 个方向捕获 76.7% 变异，且每个方向控制独立的几何属性。下一步可以直接作为 GraspNet 的感知 backbone，或用大规模无标注零件数据进一步预训练。
