@@ -1,0 +1,6 @@
+# VAE training artifacts (too large for git)
+pointcloud-encode/VAE/log/**/checkpoints/
+pointcloud-encode/VAE/log/**/logs/
+
+# Python cache
+__pycache__/
